@@ -1,0 +1,44 @@
+name: ChatOps Commit
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  apply:
+    if: startsWith(github.event.comment.body, '/write ')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+
+
+      - name: Parse command
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.comment.body
+            const m = body.match(/^\/write\s+(\S+)[\\s\\S]*?```(?:\\w+)?\\n([\\s\\S]*?)\\n```/m)
+            if (!m) core.setFailed('Use: /write <path> then a fenced code block.')
+            core.setOutput('path', m[1])
+            core.setOutput('content', m[2])
+
+      - name: Update file
+        run: |
+          mkdir -p "$(dirname "${{ steps.parse.outputs.path }}")"
+          cat > "${{ steps.parse.outputs.path }}" <<'EOF'
+          ${{ steps.parse.outputs.content }}
+          EOF
+
+      - name: Commit & push
+        run: |
+          git config user.name "chatops-bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "chatops: update ${{ steps.parse.outputs.path }}" || echo "No changes"
+          git push
